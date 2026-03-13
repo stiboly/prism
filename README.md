@@ -18,7 +18,14 @@ The API is fully documented in the documentation above. If the documentation and
 
 ## Bindings
 
-Currently bindings are an in-progress effort. We are working on bindings to at least Python and .NET, although both will take a bit of time to actually do. If you wish to contribute bindings, please don't hesitate to open a pull request. Your bindings must obey the restrictions in the documentation; specifically, where the documentation requires something to not occur, your bindings MUST prohibit that occurence before calling any Prism C API function. For example, calling `prism_backend_speak` with a `NULL` backend or text string MUST be prohibited by your bindings.
+Currently bindings are an in-progress effort. The following Bindings exist:
+
+| Language | Package/add-on/etc. |
+| --- | --- |
+| .NET | [prismatoid](https://www.nuget.org/packages/prismatoid) |
+| Python | [Prismatoid](https://pypi.org/project/prismatoid) |
+
+We welcome future bindings. If you write bindings and want them added here, please submit a PR!
 
 ## License
 
@@ -28,7 +35,8 @@ This project uses code from other projects. Specifically:
 
 * The SAPI bridge is credited to the [NVGT](https://github.com/samtupy/nvgt) project, as well as the functions `range_convert` and `range_convert_midpoint` in utils.h and utils.cpp. Similar attribution goes to NVGT for the Android screen reader backend.
 * The `simdutf` library is licensed under the Apache-2.0 license.
-* On Windows, Prism includes NVDA controller client RPC definitions under LGPL-2.1 (and generated RPC stubs from those inputs). Those portions remain under LGPL-2.1. See licenses/ and idl/ for the actual texts. On all non-Windows platforms, this does not apply, however the LGPL licenses are included for completeness in all SDKs.
+* On Windows, Prism includes NVDA controller client RPC definitions originally under LGPL-2.1 (and generated RPC stubs from those inputs). The Prism project has received permission to license the IDL files (and there generated outputs) under the MPL-2.0 regardless of the original license. Thus, you may assume that they are licensed under the MPL-2.0. The LGPL headers remain for providing attribution.
+
 
 ## Contributing
 
