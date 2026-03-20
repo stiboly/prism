@@ -4,11 +4,11 @@
 #include <array>
 #include <cstring>
 #include <cwchar>
-#include <delayimp.h>
 #include <filesystem>
 #include <tchar.h>
 #include <utility>
 #include <windows.h>
+#include <delayimp.h>
 
 template <typename T> static constexpr FARPROC stub_cast(T func) {
   // NOLINTNEXTLINE(bugprone-casting-through-void)
