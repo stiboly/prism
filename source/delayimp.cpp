@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 #ifdef _WIN32
-#include <windows.h>
 #include <array>
 #include <cstring>
 #include <cwchar>
@@ -9,6 +8,7 @@
 #include <filesystem>
 #include <tchar.h>
 #include <utility>
+#include <windows.h>
 
 template <typename T> static constexpr FARPROC stub_cast(T func) {
   // NOLINTNEXTLINE(bugprone-casting-through-void)
@@ -22,12 +22,20 @@ using StubEntry = struct {
   FARPROC stub;
 };
 
+#if defined(_M_X64) || defined(__x86_64__)
+static constexpr const char *SA_DLL = "SAAPI64.dll";
+static constexpr const char *ZDSR_DLL = "ZDSRAPI_x64.dll";
+#elif defined(_M_IX86) || defined(__i386__)
+static constexpr const char *SA_DLL = "SAAPI32.dll";
+static constexpr const char *ZDSR_DLL = "ZDSRAPI.dll";
+#endif
+
 static BOOL __stdcall stub_SA_SayW([[maybe_unused]] const wchar_t *text) {
   return FALSE;
 }
 
-static BOOL __stdcall stub_SA_BrlShowTextW(
-    [[maybe_unused]] const wchar_t *msg) {
+static BOOL __stdcall
+stub_SA_BrlShowTextW([[maybe_unused]] const wchar_t *msg) {
   return FALSE;
 }
 
@@ -51,26 +59,22 @@ static int WINAPI stub_zdsr_GetSpeakState() { return 2; }
 static void WINAPI stub_zdsr_StopSpeak() {}
 
 static const auto stubs = std::to_array<StubEntry>(
-    {{.dll = "SAAPI64.dll", .func = "SA_SayW", .stub = stub_cast(stub_SA_SayW)},
-     {.dll = "SAAPI64.dll",
+    {{.dll = SA_DLL, .func = "SA_SayW", .stub = stub_cast(stub_SA_SayW)},
+     {.dll = SA_DLL,
       .func = "SA_BrlShowTextW",
       .stub = stub_cast(stub_SA_BrlShowTextW)},
-     {.dll = "SAAPI64.dll",
+     {.dll = SA_DLL,
       .func = "SA_StopAudio",
       .stub = stub_cast(stub_SA_StopAudio)},
-     {.dll = "SAAPI64.dll",
+     {.dll = SA_DLL,
       .func = "SA_IsRunning",
       .stub = stub_cast(stub_SA_IsRunning)},
-     {.dll = "ZDSRAPI_x64.dll",
-      .func = "InitTTS",
-      .stub = stub_cast(stub_zdsr_InitTTS)},
-     {.dll = "ZDSRAPI_x64.dll",
-      .func = "Speak",
-      .stub = stub_cast(stub_zdsr_Speak)},
-     {.dll = "ZDSRAPI_x64.dll",
+     {.dll = ZDSR_DLL, .func = "InitTTS", .stub = stub_cast(stub_zdsr_InitTTS)},
+     {.dll = ZDSR_DLL, .func = "Speak", .stub = stub_cast(stub_zdsr_Speak)},
+     {.dll = ZDSR_DLL,
       .func = "GetSpeakState",
       .stub = stub_cast(stub_zdsr_GetSpeakState)},
-     {.dll = "ZDSRAPI_x64.dll",
+     {.dll = ZDSR_DLL,
       .func = "StopSpeak",
       .stub = stub_cast(stub_zdsr_StopSpeak)}});
 
@@ -99,12 +103,22 @@ static FARPROC WINAPI DelayLoadFailureHook(unsigned dliNotify,
         }
       }
     }
-    if (_stricmp(pdli->szDll, "ZDSRAPI_x64.dll") == 0) {
+#if defined(__x86_64) || defined(__x86_64__) || defined(__amd64__) ||          \
+    defined(__amd64) || defined(_M_X64) || defined(_M_IX86) ||                 \
+    defined(__i386__)
+    if (_stricmp(pdli->szDll, ZDSR_DLL) == 0) {
       HKEY zdsr_key;
+#if defined(_M_X64) || defined(__x86_64__)
       if (const auto res = RegOpenKeyEx(
               HKEY_LOCAL_MACHINE, _T("SOFTWARE\\WOW6432Node\\zhiduo\\zdsr"), 0,
               KEY_QUERY_VALUE | KEY_READ, &zdsr_key);
           res == ERROR_SUCCESS) {
+#elif defined(_M_IX86) || defined(__i386__)
+      if (const auto res =
+              RegOpenKeyEx(HKEY_LOCAL_MACHINE, _T("SOFTWARE\\zhiduo\\zdsr"), 0,
+                           KEY_QUERY_VALUE | KEY_READ, &zdsr_key);
+          res == ERROR_SUCCESS) {
+#endif
         std::wstring path;
         path.resize(MAX_PATH);
         DWORD size = MAX_PATH * sizeof(wchar_t);
@@ -127,6 +141,7 @@ static FARPROC WINAPI DelayLoadFailureHook(unsigned dliNotify,
         }
       }
     }
+#endif
     if (dummy_count < 512) {
       // NOLINTNEXTLINE(performance-no-int-to-ptr)
       auto *dummy = reinterpret_cast<HMODULE>(

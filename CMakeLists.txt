@@ -190,7 +190,13 @@ if(WIN32)
   target_sources(${PROJECT_NAME} PRIVATE "${GEN_DIR}/nvda_controller.c")
   target_include_directories(${PROJECT_NAME} PRIVATE ${GEN_DIR})
   target_link_libraries(${PROJECT_NAME} PRIVATE rpcrt4)
-  if(NOT _comp_arch_id_lc MATCHES "arm64|aarch64|arm64ec|x86|i386")
+  if(_comp_arch_id_lc STREQUAL "x86" OR _comp_arch_id_lc STREQUAL "i386")
+    add_import_library(SystemAccess ${CMAKE_CURRENT_SOURCE_DIR}/defs/sa32.def
+                       SAAPI32.dll)
+    add_import_library(ZDSR ${CMAKE_CURRENT_SOURCE_DIR}/defs/zdsr32.def
+                       ZDSRAPI.dll)
+    target_link_libraries(${PROJECT_NAME} PRIVATE SystemAccess ZDSR)
+  elseif(NOT _comp_arch_id_lc MATCHES "arm64|aarch64|arm64ec")
     add_import_library(SystemAccess ${CMAKE_CURRENT_SOURCE_DIR}/defs/sa.def
                        SAAPI64.dll)
     add_import_library(ZDSR ${CMAKE_CURRENT_SOURCE_DIR}/defs/zdsr.def
@@ -324,7 +330,12 @@ if(WIN32 OR WINDOWS_STORE)
            BELT_COM_NO_LEAK_DETECTION UNICODE _UNICODE)
 endif()
 if(MSVC)
-  if(NOT _comp_arch_id_lc MATCHES "arm64|aarch64|arm64ec")
+  if(_comp_arch_id_lc STREQUAL "x86" OR _comp_arch_id_lc STREQUAL "i386")
+    set_target_properties(
+      ${PROJECT_NAME}
+      PROPERTIES LINK_FLAGS
+                 "/STACK:8388608 /delayload:SAAPI32.dll /delayload:ZDSRAPI.dll")
+  elseif(NOT _comp_arch_id_lc MATCHES "arm64|aarch64|arm64ec")
     set_target_properties(
       ${PROJECT_NAME}
       PROPERTIES
@@ -520,7 +531,13 @@ if(DEFINED SKBUILD)
     LIBRARY DESTINATION "${PRISM_PY_NATIVE_DIR}"
     ARCHIVE DESTINATION "${PRISM_PY_NATIVE_DIR}")
   if(WIN32)
-    if(NOT _comp_arch_id_lc MATCHES "arm64|aarch64|arm64ec")
+    if(_comp_arch_id_lc STREQUAL "x86" OR _comp_arch_id_lc STREQUAL "i386")
+      install(
+        FILES "${CMAKE_CURRENT_SOURCE_DIR}/ZDSRAPI.dll"
+              "${CMAKE_CURRENT_SOURCE_DIR}/SAAPI32.dll"
+        DESTINATION "${PRISM_PY_NATIVE_DIR}"
+        OPTIONAL)
+    elseif(NOT _comp_arch_id_lc MATCHES "arm64|aarch64|arm64ec")
       install(
         FILES "${CMAKE_CURRENT_SOURCE_DIR}/ZDSRAPI_x64.dll"
               "${CMAKE_CURRENT_SOURCE_DIR}/SAAPI64.dll"
@@ -536,7 +553,13 @@ else()
     LIBRARY DESTINATION "lib"
     ARCHIVE DESTINATION "lib")
   if(WIN32)
-    if(NOT _comp_arch_id_lc MATCHES "arm64|aarch64|arm64ec")
+    if(_comp_arch_id_lc STREQUAL "x86" OR _comp_arch_id_lc STREQUAL "i386")
+      install(
+        FILES "${CMAKE_CURRENT_SOURCE_DIR}/ZDSRAPI.dll"
+              "${CMAKE_CURRENT_SOURCE_DIR}/SAAPI32.dll"
+        DESTINATION "bin"
+        OPTIONAL)
+    elseif(NOT _comp_arch_id_lc MATCHES "arm64|aarch64|arm64ec")
       install(
         FILES "${CMAKE_CURRENT_SOURCE_DIR}/ZDSRAPI_x64.dll"
               "${CMAKE_CURRENT_SOURCE_DIR}/SAAPI64.dll"
