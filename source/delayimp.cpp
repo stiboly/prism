@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 #ifdef _WIN32
+#include <windows.h>
 #include <array>
 #include <cstring>
 #include <cwchar>
@@ -8,7 +9,6 @@
 #include <filesystem>
 #include <tchar.h>
 #include <utility>
-#include <windows.h>
 
 template <typename T> static constexpr FARPROC stub_cast(T func) {
   // NOLINTNEXTLINE(bugprone-casting-through-void)
