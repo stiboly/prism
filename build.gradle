@@ -29,7 +29,7 @@ android {
         externalNativeBuild {
             cmake {
                 targets 'prism'
-                arguments '-DPRISM_ENABLE_TESTS=OFF'
+                arguments '-DPRISM_ENABLE_TESTS=OFF', '-DPRISM_ENABLE_GDEXTENSION=OFF'
             }
         }
     }

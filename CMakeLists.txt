@@ -17,7 +17,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 project(
   prism
-  VERSION 0.9.0
+  VERSION 0.10.0
   DESCRIPTION "The Platform-agnostic Reader Interface for Speech and Messages"
   LANGUAGES C CXX)
 option(PRISM_ENABLE_TESTS "Enable tests" OFF)
@@ -37,6 +37,12 @@ if(PRISM_ENABLE_VCPKG_SPECIFIC_OPTIONS)
     PRISM_VCPKG_WANTS_ORCA_BACKEND
     "Indicates that the Prism vcpkg port is being built with the orca feature enabled"
     OFF)
+endif()
+option(PRISM_ENABLE_GDEXTENSION "Enable building of the Godot GDExtension" ON)
+if(MSVC AND PRISM_ENABLE_GDEXTENSION)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY
+      "MultiThreadedDLL"
+      CACHE STRING "Match godot-cpp non-debug CRT")
 endif()
 if(APPLE)
   enable_language(Swift)
@@ -122,6 +128,7 @@ if(NOT EMSCRIPTEN)
 else()
   add_library(${PROJECT_NAME} STATIC ${headers} ${sources})
 endif()
+set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/source/simdutf.cpp
                             PROPERTIES COMPILE_OPTIONS "-w")
 set(_comp_arch_id "")
@@ -145,8 +152,31 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_compile_definitions(
   ${PROJECT_NAME}
   PRIVATE PRISM_BUILDING
-  PUBLIC NOMINMAX)
+  PUBLIC
+    NOMINMAX
+    $<$<STREQUAL:$<TARGET_PROPERTY:${PROJECT_NAME},TYPE>,STATIC_LIBRARY>:PRISM_STATIC>
+)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
+get_target_property(_PRISM_LIB_TYPE ${PROJECT_NAME} TYPE)
+if(_PRISM_LIB_TYPE STREQUAL "STATIC_LIBRARY")
+  set(_PRISM_LINK_VIS INTERFACE)
+else()
+  set(_PRISM_LINK_VIS PRIVATE)
+endif()
+if(_PRISM_LIB_TYPE STREQUAL "STATIC_LIBRARY")
+  if(MSVC)
+    target_link_options(${PROJECT_NAME} INTERFACE
+                        "/WHOLEARCHIVE:$<TARGET_LINKER_FILE:${PROJECT_NAME}>")
+  elseif(APPLE)
+    target_link_options(
+      ${PROJECT_NAME} INTERFACE
+      "LINKER:-force_load,$<TARGET_LINKER_FILE:${PROJECT_NAME}>")
+  else()
+    target_link_options(
+      ${PROJECT_NAME} INTERFACE "LINKER:--whole-archive"
+      "$<TARGET_LINKER_FILE:${PROJECT_NAME}>" "LINKER:--no-whole-archive")
+  endif()
+endif()
 if(WIN32)
   target_link_libraries(${PROJECT_NAME} PRIVATE delayimp.lib onecore.lib
                                                 uiautomationcore.lib)
@@ -221,7 +251,7 @@ if(WIN32)
 endif()
 if(APPLE)
   find_library(AVFOUNDATION_FRAMEWORK AVFoundation REQUIRED)
-  target_link_libraries(${PROJECT_NAME} PRIVATE ${AVFOUNDATION_FRAMEWORK})
+  target_link_libraries(${PROJECT_NAME} PRIVATE ${AVFOUNDATION_FRAMEWORK} c++)
 endif()
 if(UNIX
    AND NOT APPLE
@@ -345,24 +375,19 @@ if(WIN32 OR WINDOWS_STORE)
            BELT_COM_NO_LEAK_DETECTION UNICODE _UNICODE)
 endif()
 if(MSVC)
+  target_link_options(${PROJECT_NAME} PRIVATE "/STACK:8388608")
   if(_comp_arch_id_lc STREQUAL "x86" OR _comp_arch_id_lc STREQUAL "i386")
-    set_target_properties(
-      ${PROJECT_NAME}
-      PROPERTIES
-        LINK_FLAGS
-        "/STACK:8388608 /delayload:SAAPI32.dll /delayload:ZDSRAPI.dll /delayload:BoyCtrl.dll /delayload:PCTKUSR.dll"
-    )
+    target_link_options(
+      ${PROJECT_NAME} ${_PRISM_LINK_VIS} /delayload:SAAPI32.dll
+      /delayload:ZDSRAPI.dll /delayload:BoyCtrl.dll /delayload:PCTKUSR.dll)
   elseif(NOT _comp_arch_id_lc MATCHES "arm64|aarch64|arm64ec")
-    set_target_properties(
-      ${PROJECT_NAME}
-      PROPERTIES
-        LINK_FLAGS
-        "/STACK:8388608 /delayload:SAAPI64.dll /delayload:ZDSRAPI_x64.dll /delayload:BoyCtrl-x64.dll /delayload:PCTKUSR.dll"
-    )
+    target_link_options(
+      ${PROJECT_NAME} ${_PRISM_LINK_VIS} /delayload:SAAPI64.dll
+      /delayload:ZDSRAPI_x64.dll /delayload:BoyCtrl-x64.dll
+      /delayload:PCTKUSR.dll)
   else()
-    set_target_properties(
-      ${PROJECT_NAME} PROPERTIES LINK_FLAGS
-                                 "/STACK:8388608 /delayload:PCTKUSR.dll")
+    target_link_options(${PROJECT_NAME} ${_PRISM_LINK_VIS}
+                        /delayload:PCTKUSR.dll)
   endif()
   check_cxx_compiler_flag(/utf-8 MSVC_HAS_UTF8_OPTION)
   check_cxx_compiler_flag(/bigobj MSVC_HAS_BIGOBJ)
@@ -377,25 +402,20 @@ elseif(
   AND WIN32
   AND NOT MINGW)
   if(_comp_arch_id_lc STREQUAL "x86" OR _comp_arch_id_lc STREQUAL "i386")
+    target_link_options(${PROJECT_NAME} PRIVATE "LINKER:/STACK:8388608")
     target_link_options(
-      ${PROJECT_NAME}
-      PRIVATE
-      "LINKER:/STACK:8388608"
-      "LINKER:/delayload:SAAPI32.dll"
-      "LINKER:/delayload:ZDSRAPI.dll"
-      "LINKER:/delayload:BoyCtrl.dll"
+      ${PROJECT_NAME} ${_PRISM_LINK_VIS} "LINKER:/delayload:SAAPI32.dll"
+      "LINKER:/delayload:ZDSRAPI.dll" "LINKER:/delayload:BoyCtrl.dll"
       "LINKER:/delayload:PCTKUSR.dll")
   elseif(NOT _comp_arch_id_lc MATCHES "arm64|aarch64|arm64ec")
+    target_link_options(${PROJECT_NAME} PRIVATE "LINKER:/STACK:8388608")
     target_link_options(
-      ${PROJECT_NAME}
-      PRIVATE
-      "LINKER:/STACK:8388608"
-      "LINKER:/delayload:SAAPI64.dll"
-      "LINKER:/delayload:ZDSRAPI_x64.dll"
-      "LINKER:/delayload:BoyCtrl-x64.dll"
+      ${PROJECT_NAME} ${_PRISM_LINK_VIS} "LINKER:/delayload:SAAPI64.dll"
+      "LINKER:/delayload:ZDSRAPI_x64.dll" "LINKER:/delayload:BoyCtrl-x64.dll"
       "LINKER:/delayload:PCTKUSR.dll")
   else()
-    target_link_options(${PROJECT_NAME} PRIVATE "LINKER:/STACK:8388608"
+    target_link_options(${PROJECT_NAME} PRIVATE "LINKER:/STACK:8388608")
+    target_link_options(${PROJECT_NAME} ${_PRISM_LINK_VIS}
                         "LINKER:/delayload:PCTKUSR.dll")
   endif()
 elseif(WIN32 AND MINGW)
@@ -617,4 +637,7 @@ else()
   install(FILES "${CMAKE_CURRENT_BINARY_DIR}/prism-config-version.cmake"
           DESTINATION share/prism)
   install(DIRECTORY include/ DESTINATION include)
+endif()
+if(PRISM_ENABLE_GDEXTENSION)
+  add_subdirectory(gdextension)
 endif()

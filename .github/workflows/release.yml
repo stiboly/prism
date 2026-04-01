@@ -17,7 +17,7 @@ jobs:
       version: ${{ steps.extract.outputs.version }}
       tag: ${{ steps.extract.outputs.tag }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Extract version
         id: extract
         run: |
@@ -27,12 +27,12 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build docs
         run: |
           cargo install --all-features mdbook
           mdbook build doc
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: docs
           path: doc/book
@@ -41,27 +41,25 @@ jobs:
     needs: version
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
       - name: Build Dynamic Release
         run: |
-          cmake -B build-dynamic-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON
+          cmake -B build-dynamic-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-dynamic-release
       - name: Build Dynamic Debug
         run: |
-          cmake -B build-dynamic-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON
+          cmake -B build-dynamic-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-dynamic-debug
       - name: Build Static Release
         run: |
-          cmake -B build-static-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF
+          cmake -B build-static-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-static-release
       - name: Build Static Debug
         run: |
-          cmake -B build-static-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF
+          cmake -B build-static-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-static-debug
       - name: Package
         shell: pwsh
@@ -87,7 +85,7 @@ jobs:
           cp -r LICENSES "dist"
           cp NOTICE "dist"
           Compress-Archive -Path dist/* -DestinationPath prism-windows-x64.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-x64
           path: prism-windows-x64.zip
@@ -96,29 +94,25 @@ jobs:
     needs: version
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64_arm64
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-      - name: Set up Python
-        run: uv python install
       - name: Build Dynamic Release
         run: |
-          cmake -B build-dynamic-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_SYSTEM_PROCESSOR=ARM64
+          cmake -B build-dynamic-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_SYSTEM_PROCESSOR=ARM64 -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-dynamic-release
       - name: Build Dynamic Debug
         run: |
-          cmake -B build-dynamic-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_SYSTEM_PROCESSOR=ARM64
+          cmake -B build-dynamic-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_SYSTEM_PROCESSOR=ARM64 -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-dynamic-debug
       - name: Build Static Release
         run: |
-          cmake -B build-static-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DCMAKE_SYSTEM_PROCESSOR=ARM64
+          cmake -B build-static-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DCMAKE_SYSTEM_PROCESSOR=ARM64 -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-static-release
       - name: Build Static Debug
         run: |
-          cmake -B build-static-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DCMAKE_SYSTEM_PROCESSOR=ARM64
+          cmake -B build-static-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DCMAKE_SYSTEM_PROCESSOR=ARM64 -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-static-debug
       - name: Package
         shell: pwsh
@@ -144,7 +138,7 @@ jobs:
           cp -r LICENSES "dist"
           cp NOTICE "dist"
           Compress-Archive -Path dist/* -DestinationPath prism-windows-arm64.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-arm64
           path: prism-windows-arm64.zip
@@ -153,30 +147,30 @@ jobs:
     needs: version
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build Dynamic Release
         run: |
-          cmake -B build-arm64-dynamic-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DPRISM_ENABLE_TESTS=OFF -G Ninja -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DBUILD_SHARED_LIBS=ON
+          cmake -B build-arm64-dynamic-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DPRISM_ENABLE_TESTS=OFF -G Ninja -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-arm64-dynamic-release
-          cmake -B build-x64-dynamic-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_Swift_COMPILER_TARGET=x86_64-apple-macosx15.0 -DBUILD_SHARED_LIBS=ON
+          cmake -B build-x64-dynamic-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_Swift_COMPILER_TARGET=x86_64-apple-macosx15.0 -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-x64-dynamic-release
       - name: Build Dynamic Debug
         run: |
-          cmake -B build-arm64-dynamic-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=arm64 -G Ninja -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DBUILD_SHARED_LIBS=ON
+          cmake -B build-arm64-dynamic-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=arm64 -G Ninja -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-arm64-dynamic-debug
-          cmake -B build-x64-dynamic-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_Swift_COMPILER_TARGET=x86_64-apple-macosx15.0 -DBUILD_SHARED_LIBS=ON
+          cmake -B build-x64-dynamic-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_Swift_COMPILER_TARGET=x86_64-apple-macosx15.0 -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-x64-dynamic-debug
       - name: Build Static Release
         run: |
-          cmake -B build-arm64-static-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DPRISM_ENABLE_TESTS=OFF -G Ninja -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DBUILD_SHARED_LIBS=OFF
+          cmake -B build-arm64-static-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DPRISM_ENABLE_TESTS=OFF -G Ninja -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-arm64-static-release
-          cmake -B build-x64-static-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_Swift_COMPILER_TARGET=x86_64-apple-macosx15.0 -DBUILD_SHARED_LIBS=OFF
+          cmake -B build-x64-static-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_Swift_COMPILER_TARGET=x86_64-apple-macosx15.0 -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-x64-static-release
       - name: Build Static Debug
         run: |
-          cmake -B build-arm64-static-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=arm64 -G Ninja -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DBUILD_SHARED_LIBS=OFF
+          cmake -B build-arm64-static-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=arm64 -G Ninja -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-arm64-static-debug
-          cmake -B build-x64-static-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_Swift_COMPILER_TARGET=x86_64-apple-macosx15.0 -DBUILD_SHARED_LIBS=OFF
+          cmake -B build-x64-static-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_Swift_COMPILER_TARGET=x86_64-apple-macosx15.0 -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-x64-static-debug
       - name: Package
         run: |
@@ -198,32 +192,32 @@ jobs:
           cp -r LICENSES "dist"
           cp NOTICE "dist"
           cd dist && zip -r ../prism-macos-universal.zip .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos-universal
           path: prism-macos-universal.zip
 
   ios:
     needs: version
-    runs-on: macos-15
+    runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build Dynamic Release
         run: |
           curl -sSL https://raw.githubusercontent.com/leetal/ios-cmake/master/ios.toolchain.cmake -o ios.toolchain.cmake
-          cmake -B build-dynamic-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=14.0 -DCMAKE_Swift_FLAGS="-target arm64-apple-ios14.0" -DPRISM_ENABLE_TESTS=OFF -G Ninja -DBUILD_SHARED_LIBS=ON
+          cmake -B build-dynamic-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=16.0 -DCMAKE_Swift_FLAGS="-target arm64-apple-ios16.0" -DPRISM_ENABLE_TESTS=OFF -G Ninja -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-dynamic-release
       - name: Build Dynamic Debug
         run: |
-          cmake -B build-dynamic-debug -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=14.0 -DCMAKE_Swift_FLAGS="-target arm64-apple-ios14.0" -DPRISM_ENABLE_TESTS=OFF -G Ninja -DBUILD_SHARED_LIBS=ON
+          cmake -B build-dynamic-debug -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=16.0 -DCMAKE_Swift_FLAGS="-target arm64-apple-ios16.0" -DPRISM_ENABLE_TESTS=OFF -G Ninja -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-dynamic-debug
       - name: Build Static Release
         run: |
-          cmake -B build-static-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=14.0 -DCMAKE_Swift_FLAGS="-target arm64-apple-ios14.0" -DPRISM_ENABLE_TESTS=OFF -G Ninja -DBUILD_SHARED_LIBS=OFF
+          cmake -B build-static-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=16.0 -DCMAKE_Swift_FLAGS="-target arm64-apple-ios16.0" -DPRISM_ENABLE_TESTS=OFF -G Ninja -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-static-release
       - name: Build Static Debug
         run: |
-          cmake -B build-static-debug -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=14.0 -DCMAKE_Swift_FLAGS="-target arm64-apple-ios14.0" -DPRISM_ENABLE_TESTS=OFF -G Ninja -DBUILD_SHARED_LIBS=OFF
+          cmake -B build-static-debug -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=16.0 -DCMAKE_Swift_FLAGS="-target arm64-apple-ios16.0" -DPRISM_ENABLE_TESTS=OFF -G Ninja -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-static-debug
       - name: Package
         run: |
@@ -246,7 +240,7 @@ jobs:
           cp -r LICENSES "dist"
           cp NOTICE "dist"
           cd dist && zip -r ../prism-ios-arm64.zip .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ios-arm64
           path: prism-ios-arm64.zip
@@ -255,24 +249,24 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install deps
         run: sudo apt-get update && sudo apt-get install -y libspeechd-dev libglib2.0-dev
       - name: Build Dynamic Release
         run: |
-          cmake -B build-dynamic-release -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON
+          cmake -B build-dynamic-release -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-dynamic-release
       - name: Build Dynamic Debug
         run: |
-          cmake -B build-dynamic-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON
+          cmake -B build-dynamic-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-dynamic-debug
       - name: Build Static Release
         run: |
-          cmake -B build-static-release -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF
+          cmake -B build-static-release -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-static-release
       - name: Build Static Debug
         run: |
-          cmake -B build-static-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF
+          cmake -B build-static-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-static-debug
       - name: Package
         run: |
@@ -292,7 +286,7 @@ jobs:
           cp -r LICENSES "dist"
           cp NOTICE "dist"
           cd dist && zip -r ../prism-linux-x64.zip .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-x64
           path: prism-linux-x64.zip
@@ -301,24 +295,24 @@ jobs:
     needs: version
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install deps
         run: sudo apt-get update && sudo apt-get install -y libspeechd-dev libglib2.0-dev
       - name: Build Dynamic Release
         run: |
-          cmake -B build-dynamic-release -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON
+          cmake -B build-dynamic-release -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-dynamic-release
       - name: Build Dynamic Debug
         run: |
-          cmake -B build-dynamic-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON
+          cmake -B build-dynamic-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-dynamic-debug
       - name: Build Static Release
         run: |
-          cmake -B build-static-release -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF
+          cmake -B build-static-release -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-static-release
       - name: Build Static Debug
         run: |
-          cmake -B build-static-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF
+          cmake -B build-static-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
           cmake --build build-static-debug
       - name: Package
         run: |
@@ -338,7 +332,7 @@ jobs:
           cp -r LICENSES "dist"
           cp NOTICE "dist"
           cd dist && zip -r ../prism-linux-arm64.zip .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-arm64
           path: prism-linux-arm64.zip
@@ -347,8 +341,8 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 25
@@ -364,7 +358,7 @@ jobs:
           cp -r LICENSES "dist"
           cp NOTICE "dist"
           cd dist && zip -r ../prism-android.zip .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: android
           path: prism-android.zip
@@ -373,17 +367,17 @@ jobs:
       needs: version
       runs-on: ubuntu-latest
       steps:
-        - uses: actions/checkout@v5
+        - uses: actions/checkout@v6
         - uses: mymindstorm/setup-emsdk@v14
           with:
             version: latest
         - name: Build Release
           run: |
-            emcmake cmake -B build-release -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF
+            emcmake cmake -B build-release -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
             cmake --build build-release
         - name: Build Debug
           run: |
-            emcmake cmake -B build-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF
+            emcmake cmake -B build-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
             cmake --build build-debug
         - name: Package
           run: |
@@ -394,17 +388,173 @@ jobs:
             cp -r LICENSES "dist"
             cp NOTICE "dist"
             cd dist && zip -r ../prism-wasm.zip .
-        - uses: actions/upload-artifact@v4
+        - uses: actions/upload-artifact@v7
           with:
             name: wasm
             path: prism-wasm.zip
 
+  gdextension:
+    needs: version
+    strategy:
+      fail-fast: true
+      matrix:
+        target-type: [template_debug, template_release]
+        target:
+          - { platform: linux, arch: x86_64, os: ubuntu-latest }
+          - { platform: linux, arch: x86_32, os: ubuntu-latest }
+          - { platform: linux, arch: arm64, os: ubuntu-24.04-arm }
+          - { platform: linux, arch: arm32, os: ubuntu-24.04-arm }
+          - { platform: windows, arch: x86_64, os: windows-latest }
+          - { platform: windows, arch: x86_32, os: windows-latest }
+          - { platform: windows, arch: arm64, os: windows-latest }
+          - { platform: macos, arch: arm64, os: macos-latest }
+          - { platform: macos, arch: x86_64, os: macos-latest }
+          - { platform: android, arch: x86_64, os: ubuntu-latest }
+          - { platform: android, arch: x86_32, os: ubuntu-latest }
+          - { platform: android, arch: arm64, os: ubuntu-latest }
+          - { platform: android, arch: arm32, os: ubuntu-latest }
+          - { platform: ios, arch: arm64, os: macos-latest }
+          - { platform: web, arch: wasm32, os: ubuntu-latest }
+    runs-on: ${{ matrix.target.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+      - name: install-multilib-linux-x86-32
+        if: matrix.target.platform == 'linux' && matrix.target.arch == 'x86_32'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib g++-multilib
+      - name: install-linux-armhf-toolchain
+        if: matrix.target.platform == 'linux' && matrix.target.arch == 'arm32'
+        run: |
+          sudo dpkg --add-architecture armhf
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+      - name: linux-deps-setup
+        if: matrix.target.platform == 'linux' && (matrix.target.arch == 'x86_64' || matrix.target.arch == 'arm64')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libspeechd-dev libglib2.0-dev
+      - name: windows-msvc-setup-x86_64
+        if: matrix.target.platform == 'windows' && matrix.target.arch == 'x86_64'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+      - name: windows-msvc-setup-x86_32
+        if: matrix.target.platform == 'windows' && matrix.target.arch == 'x86_32'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - name: windows-msvc-setup-arm64
+        if: matrix.target.platform == 'windows' && matrix.target.arch == 'arm64'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64_arm64
+      - name: Android-ndk-setup
+        if: matrix.target.platform == 'android'
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r29
+      - name: iOS-download-toolchain
+        if: matrix.target.platform == 'ios'
+        run: |
+          curl -sSL https://raw.githubusercontent.com/leetal/ios-cmake/master/ios.toolchain.cmake -o ios.toolchain.cmake
+      - name: Web-setup-Emscripten
+        if: matrix.target.platform == 'web'
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+      - name: Set-build-type
+        id: bt
+        shell: bash
+        run: |
+          if [ "${{ matrix.target-type }}" = "template_release" ]; then
+            echo "cmake_type=Release" >> "$GITHUB_OUTPUT"
+          else
+            echo "cmake_type=Debug" >> "$GITHUB_OUTPUT"
+          fi
+      - name: configure-linux-arm64
+        if: matrix.target.platform == 'linux' && (matrix.target.arch == 'x86_64' || matrix.target.arch == 'arm64')
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON
+      - name: configure-linux-x86_32
+        if: matrix.target.platform == 'linux' && matrix.target.arch == 'x86_32'
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON -DCMAKE_C_FLAGS="-m32" -DCMAKE_CXX_FLAGS="-m32"
+      - name: configure-linux-arm32
+        if: matrix.target.platform == 'linux' && matrix.target.arch == 'arm32'
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=armv7l
+      - name: configure-windows-x86_64
+        if: matrix.target.platform == 'windows' && matrix.target.arch == 'x86_64'
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON
+      - name: configure-Windows-x86_32
+        if: matrix.target.platform == 'windows' && matrix.target.arch == 'x86_32'
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON
+      - name: configure- Windows-arm64
+        if: matrix.target.platform == 'windows' && matrix.target.arch == 'arm64'
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON -DCMAKE_SYSTEM_PROCESSOR=ARM64
+      - name: configure-macos-arm64
+        if: matrix.target.platform == 'macos' && matrix.target.arch == 'arm64'
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
+      - name: configure-macos-x86_64
+        if: matrix.target.platform == 'macos' && matrix.target.arch == 'x86_64'
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_Swift_COMPILER_TARGET=x86_64-apple-macosx15.0
+      - name: configure-android
+        if: matrix.target.platform == 'android'
+        shell: bash
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          declare -A abi_map=( [arm64]=arm64-v8a [arm32]=armeabi-v7a [x86_64]=x86_64 [x86_32]=x86 )
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" -DANDROID_ABI="${abi_map[${{ matrix.target.arch }}]}" -DANDROID_PLATFORM=android-21
+      - name: configure-ios
+        if: matrix.target.platform == 'ios'
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=16.0 -DCMAKE_Swift_FLAGS="-target arm64-apple-ios16.0"
+      - name: configure-web
+        if: matrix.target.platform == 'web'
+        run: |
+          emcmake cmake -B build -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON
+      - name: Build
+        run: cmake --build build --target prismatoid
+      - name: Delete Windows build artifacts
+        if: matrix.target.platform == 'windows'
+        shell: pwsh
+        run: |
+          Remove-Item gdextension/bin/* -Include *.exp,*.lib,*.pdb -Recurse -Force -ErrorAction SilentlyContinue
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: gdextension-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ matrix.target-type }}
+          path: |
+            gdextension/project/bin/**
+
+  gdextension-merge:
+    runs-on: ubuntu-latest
+    needs: gdextension
+    steps:
+      - name: Merge GDExtension artifacts
+        uses: actions/upload-artifact/merge@v4
+        with:
+          name: gdextension-all
+          pattern: gdextension-*
+          delete-merged: true
+
   release:
-    needs: [version, docs, windows-x64, windows-arm64, macos, ios, linux-x64, linux-arm64, android, emscripten]
+    needs: [version, docs, windows-x64, windows-arm64, macos, ios, linux-x64, linux-arm64, android, emscripten, gdextension-merge]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v5
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
       - name: Assemble SDK
@@ -428,6 +578,14 @@ jobs:
           cp -r LICENSES "${sdk}"
           cp NOTICE "${sdk}"
           zip -r "${sdk}.zip" "${sdk}"
+      - name: Package GDExtension addon
+        run: |
+          tag="${{ needs.version.outputs.tag }}"
+          mkdir -p prismatoid/bin
+          cp -r artifacts/gdextension-all/* prismatoid/bin/
+          cp -r LICENSES prismatoid/
+          cp NOTICE prismatoid/
+          zip -r "prismatoid-gdextension-${tag}.zip" prismatoid
       - uses: actions/create-github-app-token@v1
         id: app-token
         with:
@@ -442,6 +600,7 @@ jobs:
           generate_release_notes: true
           files: |
             prism-sdk-${{ needs.version.outputs.tag }}.zip
+            prismatoid-gdextension-${{ needs.version.outputs.tag }}.zip
             artifacts/windows-x64/prism-windows-x64.zip
             artifacts/windows-arm64/prism-windows-arm64.zip
             artifacts/macos-universal/prism-macos-universal.zip
