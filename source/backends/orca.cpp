@@ -10,6 +10,7 @@
 #ifndef NO_ORCA
 #include "orca-module.h"
 #include "orca-service.h"
+#include <array>
 #include <gio/gio.h>
 
 class OrcaBackend final : public TextToSpeechBackend {
@@ -17,6 +18,10 @@ private:
   GDBusConnection *conn{nullptr};
   OrcaServiceOrgGnomeOrcaService *service_proxy{nullptr};
   OrcaModuleOrgGnomeOrcaModule *module_proxy{nullptr};
+  static inline constexpr auto orca_speech_service_names =
+      std::to_array<std::string_view>(
+          {"/org/gnome/Orca/Service/SpeechAndVerbosityManager",
+           "/org/gnome/Orca/Service/SpeechManager"});
 
 public:
   ~OrcaBackend() override {
@@ -82,11 +87,17 @@ public:
       conn = nullptr;
       return std::unexpected(BackendError::BackendNotAvailable);
     }
-    module_proxy = orca_module_org_gnome_orca_module_proxy_new_sync(
-        conn, G_DBUS_PROXY_FLAGS_NONE, "org.gnome.Orca.Service",
-        "/org/gnome/Orca/Service/SpeechAndVerbosityManager", nullptr, &error);
-    if (error != nullptr) {
-      g_error_free(error);
+    for (const auto &name : orca_speech_service_names) {
+      GError *error = nullptr;
+      module_proxy = orca_module_org_gnome_orca_module_proxy_new_sync(
+          conn, G_DBUS_PROXY_FLAGS_NONE, "org.gnome.Orca.Service", name.data(),
+          nullptr, &error);
+      if (error != nullptr)
+        g_error_free(error);
+      if (module_proxy != nullptr)
+        break;
+    }
+    if (module_proxy == nullptr) {
       g_object_unref(service_proxy);
       service_proxy = nullptr;
       g_object_unref(conn);
