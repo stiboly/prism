@@ -1,6 +1,6 @@
 [project]
 name = "prismatoid"
-version = "0.10.0"
+version = "0.11.0"
 description = "The Platform-Agnostic Reader Interface for Speech and Messages"
 readme = "README.md"
 authors = [
@@ -39,7 +39,7 @@ dev = [
 minimum-version = "build-system.requires"
 build-dir = "build/{wheel_tag}"
 cmake.version = ">=3.31.0"
-cmake.define = { PRISM_ENABLE_TESTS = "OFF" }
+cmake.define = { PRISM_ENABLE_TESTS = "OFF", PRISM_ENABLE_GDEXTENSION = "OFF" }
 cmake.source-dir = "."
 build.verbose = true
 wheel.packages = ["bindings/py/prism/prism"]
@@ -109,7 +109,7 @@ environment = { MACOSX_DEPLOYMENT_TARGET = "15.0", CMAKE_OSX_DEPLOYMENT_TARGET =
 before-build = ["xcode-select --print-path || xcode-select --install"]
 
 [tool.cibuildwheel.windows]
-archs = ["AMD64", "ARM64"]
+archs = ["AMD64", "ARM64", "X86"]
 environment = { CMAKE_BUILD_PARALLEL_LEVEL = "4" }
 
 [[tool.cibuildwheel.overrides]]
