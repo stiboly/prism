@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
 name: Release
-
 on:
   workflow_dispatch:
     inputs:
@@ -10,6 +9,12 @@ on:
         default: true
 permissions:
   contents: write
+env:
+  CMAKE_COMMON: >-
+    -G Ninja
+    -DPRISM_ENABLE_TESTS=OFF
+    -DPRISM_ENABLE_DEMOS=OFF
+
 jobs:
   version:
     runs-on: ubuntu-latest
@@ -24,6 +29,7 @@ jobs:
           version=$(sed -n 's/^[[:space:]]*VERSION[[:space:]]\+\([0-9.]\+\).*/\1/p' CMakeLists.txt | head -1)
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
   docs:
     runs-on: ubuntu-latest
     steps:
@@ -37,30 +43,34 @@ jobs:
           name: docs
           path: doc/book
 
-  windows-x64:
+  windows:
     needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: x64,   msvc_arch: amd64,       extra_cmake: "" }
+          - { name: arm64, msvc_arch: amd64_arm64,  extra_cmake: "-DCMAKE_SYSTEM_PROCESSOR=ARM64" }
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
       - uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: amd64
-      - name: Build Dynamic Release
+          arch: ${{ matrix.msvc_arch }}
+      - name: Build all configurations
+        shell: pwsh
         run: |
-          cmake -B build-dynamic-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-dynamic-release
-      - name: Build Dynamic Debug
-        run: |
-          cmake -B build-dynamic-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-dynamic-debug
-      - name: Build Static Release
-        run: |
-          cmake -B build-static-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-static-release
-      - name: Build Static Debug
-        run: |
-          cmake -B build-static-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-static-debug
+          foreach ($shared in @("ON", "OFF")) {
+            $linkage = if ($shared -eq "ON") { "dynamic" } else { "static" }
+            foreach ($bt in @("Release", "Debug")) {
+              $config = $bt.ToLower()
+              cmake -B "build-${linkage}-${config}" ${{ env.CMAKE_COMMON }} `
+                -DCMAKE_BUILD_TYPE=$bt `
+                -DBUILD_SHARED_LIBS=$shared `
+                -DPRISM_ENABLE_GDEXTENSION=OFF ${{ matrix.extra_cmake }}
+              cmake --build "build-${linkage}-${config}"
+            }
+          }
       - name: Package
         shell: pwsh
         run: |
@@ -82,115 +92,116 @@ jobs:
           }
           mkdir -p dist/include
           cp include/prism.h dist/include/
-          cp -r LICENSES "dist"
-          cp NOTICE "dist"
-          Compress-Archive -Path dist/* -DestinationPath prism-windows-x64.zip
+          cp -r LICENSES dist
+          cp NOTICE dist
+          Compress-Archive -Path dist/* -DestinationPath "prism-windows-${{ matrix.name }}.zip"
       - uses: actions/upload-artifact@v7
         with:
-          name: windows-x64
-          path: prism-windows-x64.zip
+          name: windows-${{ matrix.name }}
+          path: prism-windows-${{ matrix.name }}.zip
 
-  windows-arm64:
+  linux:
     needs: version
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: x64,   os: ubuntu-latest }
+          - { name: arm64, os: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
-      - uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: amd64_arm64
-      - name: Build Dynamic Release
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y libspeechd-dev libglib2.0-dev
+      - name: Build all configurations
         run: |
-          cmake -B build-dynamic-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_SYSTEM_PROCESSOR=ARM64 -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-dynamic-release
-      - name: Build Dynamic Debug
-        run: |
-          cmake -B build-dynamic-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_SYSTEM_PROCESSOR=ARM64 -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-dynamic-debug
-      - name: Build Static Release
-        run: |
-          cmake -B build-static-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DCMAKE_SYSTEM_PROCESSOR=ARM64 -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-static-release
-      - name: Build Static Debug
-        run: |
-          cmake -B build-static-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DCMAKE_SYSTEM_PROCESSOR=ARM64 -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-static-debug
+          for shared in ON OFF; do
+            linkage=$( [ "$shared" = "ON" ] && echo "dynamic" || echo "static" )
+            for bt in Release Debug; do
+              config=$(echo "$bt" | tr '[:upper:]' '[:lower:]')
+              cmake -B "build-${linkage}-${config}" ${{ env.CMAKE_COMMON }} \
+                -DCMAKE_BUILD_TYPE="$bt" \
+                -DBUILD_SHARED_LIBS="$shared" \
+                -DPRISM_ENABLE_GDEXTENSION=OFF
+              cmake --build "build-${linkage}-${config}"
+            done
+          done
       - name: Package
-        shell: pwsh
         run: |
-          foreach ($linkage in @("dynamic", "static")) {
-            foreach ($config in @("release", "debug")) {
-              $src = "build-${linkage}-${config}"
+          for linkage in dynamic static; do
+            for config in release debug; do
               mkdir -p "dist/${linkage}/${config}/lib"
-              mkdir -p "dist/${linkage}/${config}/bin"
-              if ($linkage -eq "dynamic") {
-                cp "${src}/prism.dll" "dist/${linkage}/${config}/bin/"
-                cp "${src}/prism.lib" "dist/${linkage}/${config}/lib/"
-              } else {
-                cp "${src}/prism.lib" "dist/${linkage}/${config}/lib/"
-              }
-              if ($config -eq "debug") {
-                cp "${src}/prism.pdb" "dist/${linkage}/${config}/bin/" -ErrorAction SilentlyContinue
-              }
-            }
-          }
+              src="build-${linkage}-${config}"
+              if [ "$linkage" = "dynamic" ]; then
+                cp "${src}/libprism.so" "dist/${linkage}/${config}/lib/"
+              else
+                cp "${src}/libprism.a" "dist/${linkage}/${config}/lib/"
+              fi
+            done
+          done
           mkdir -p dist/include
           cp include/prism.h dist/include/
-          cp -r LICENSES "dist"
-          cp NOTICE "dist"
-          Compress-Archive -Path dist/* -DestinationPath prism-windows-arm64.zip
+          cp -r LICENSES dist
+          cp NOTICE dist
+          cd dist && zip -r "../prism-linux-${{ matrix.name }}.zip" .
       - uses: actions/upload-artifact@v7
         with:
-          name: windows-arm64
-          path: prism-windows-arm64.zip
+          name: linux-${{ matrix.name }}
+          path: prism-linux-${{ matrix.name }}.zip
 
   macos:
     needs: version
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Build Dynamic Release
+      - name: Build all configurations
         run: |
-          cmake -B build-arm64-dynamic-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DPRISM_ENABLE_TESTS=OFF -G Ninja -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-arm64-dynamic-release
-          cmake -B build-x64-dynamic-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_Swift_COMPILER_TARGET=x86_64-apple-macosx15.0 -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-x64-dynamic-release
-      - name: Build Dynamic Debug
-        run: |
-          cmake -B build-arm64-dynamic-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=arm64 -G Ninja -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-arm64-dynamic-debug
-          cmake -B build-x64-dynamic-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_Swift_COMPILER_TARGET=x86_64-apple-macosx15.0 -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-x64-dynamic-debug
-      - name: Build Static Release
-        run: |
-          cmake -B build-arm64-static-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DPRISM_ENABLE_TESTS=OFF -G Ninja -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-arm64-static-release
-          cmake -B build-x64-static-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_Swift_COMPILER_TARGET=x86_64-apple-macosx15.0 -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-x64-static-release
-      - name: Build Static Debug
-        run: |
-          cmake -B build-arm64-static-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=arm64 -G Ninja -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-arm64-static-debug
-          cmake -B build-x64-static-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_Swift_COMPILER_TARGET=x86_64-apple-macosx15.0 -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-x64-static-debug
+          for shared in ON OFF; do
+            linkage=$( [ "$shared" = "ON" ] && echo "dynamic" || echo "static" )
+            for bt in Release Debug; do
+              config=$(echo "$bt" | tr '[:upper:]' '[:lower:]')
+              for arch in arm64 x86_64; do
+                extra_flags=""
+                if [ "$arch" = "x86_64" ]; then
+                  extra_flags="-DCMAKE_Swift_COMPILER_TARGET=x86_64-apple-macosx15.0"
+                fi
+                cmake -B "build-${arch}-${linkage}-${config}" ${{ env.CMAKE_COMMON }} \
+                  -DCMAKE_BUILD_TYPE="$bt" \
+                  -DCMAKE_OSX_ARCHITECTURES="$arch" \
+                  -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+                  -DBUILD_SHARED_LIBS="$shared" \
+                  -DPRISM_ENABLE_GDEXTENSION=OFF \
+                  $extra_flags
+                cmake --build "build-${arch}-${linkage}-${config}"
+              done
+            done
+          done
       - name: Package
         run: |
           for linkage in dynamic static; do
             for config in release debug; do
               mkdir -p "dist/${linkage}/${config}/lib"
               if [ "$linkage" = "dynamic" ]; then
-                lipo -create "build-arm64-${linkage}-${config}/libprism.dylib" "build-x64-${linkage}-${config}/libprism.dylib" -output "dist/${linkage}/${config}/lib/libprism.dylib"
+                lipo -create \
+                  "build-arm64-${linkage}-${config}/libprism.dylib" \
+                  "build-x86_64-${linkage}-${config}/libprism.dylib" \
+                  -output "dist/${linkage}/${config}/lib/libprism.dylib"
               else
-                lipo -create "build-arm64-${linkage}-${config}/libprism.a" "build-x64-${linkage}-${config}/libprism.a" -output "dist/${linkage}/${config}/lib/libprism.a"
+                lipo -create \
+                  "build-arm64-${linkage}-${config}/libprism.a" \
+                  "build-x86_64-${linkage}-${config}/libprism.a" \
+                  -output "dist/${linkage}/${config}/lib/libprism.a"
               fi
               if [ "$config" = "debug" ]; then
-                cp -r "build-arm64-${linkage}-${config}/libprism.dylib.dSYM" "dist/${linkage}/${config}/lib/" 2>/dev/null || true
+                cp -r "build-arm64-${linkage}-${config}/libprism.dylib.dSYM" \
+                  "dist/${linkage}/${config}/lib/" 2>/dev/null || true
               fi
             done
           done
           mkdir -p dist/include
           cp include/prism.h dist/include/
-          cp -r LICENSES "dist"
-          cp NOTICE "dist"
+          cp -r LICENSES dist
+          cp NOTICE dist
           cd dist && zip -r ../prism-macos-universal.zip .
       - uses: actions/upload-artifact@v7
         with:
@@ -202,23 +213,24 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Build Dynamic Release
+      - name: Download iOS toolchain
+        run: curl -sSL https://raw.githubusercontent.com/leetal/ios-cmake/master/ios.toolchain.cmake -o ios.toolchain.cmake
+      - name: Build all configurations
         run: |
-          curl -sSL https://raw.githubusercontent.com/leetal/ios-cmake/master/ios.toolchain.cmake -o ios.toolchain.cmake
-          cmake -B build-dynamic-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=16.0 -DCMAKE_Swift_FLAGS="-target arm64-apple-ios16.0" -DPRISM_ENABLE_TESTS=OFF -G Ninja -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-dynamic-release
-      - name: Build Dynamic Debug
-        run: |
-          cmake -B build-dynamic-debug -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=16.0 -DCMAKE_Swift_FLAGS="-target arm64-apple-ios16.0" -DPRISM_ENABLE_TESTS=OFF -G Ninja -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-dynamic-debug
-      - name: Build Static Release
-        run: |
-          cmake -B build-static-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=16.0 -DCMAKE_Swift_FLAGS="-target arm64-apple-ios16.0" -DPRISM_ENABLE_TESTS=OFF -G Ninja -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-static-release
-      - name: Build Static Debug
-        run: |
-          cmake -B build-static-debug -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=16.0 -DCMAKE_Swift_FLAGS="-target arm64-apple-ios16.0" -DPRISM_ENABLE_TESTS=OFF -G Ninja -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-static-debug
+          for shared in ON OFF; do
+            linkage=$( [ "$shared" = "ON" ] && echo "dynamic" || echo "static" )
+            for bt in Release Debug; do
+              config=$(echo "$bt" | tr '[:upper:]' '[:lower:]')
+              cmake -B "build-${linkage}-${config}" ${{ env.CMAKE_COMMON }} \
+                -DCMAKE_BUILD_TYPE="$bt" \
+                -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake \
+                -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=16.0 \
+                -DCMAKE_Swift_FLAGS="-target arm64-apple-ios16.0" \
+                -DBUILD_SHARED_LIBS="$shared" \
+                -DPRISM_ENABLE_GDEXTENSION=OFF
+              cmake --build "build-${linkage}-${config}"
+            done
+          done
       - name: Package
         run: |
           for linkage in dynamic static; do
@@ -237,105 +249,13 @@ jobs:
           done
           mkdir -p dist/include
           cp include/prism.h dist/include/
-          cp -r LICENSES "dist"
-          cp NOTICE "dist"
+          cp -r LICENSES dist
+          cp NOTICE dist
           cd dist && zip -r ../prism-ios-arm64.zip .
       - uses: actions/upload-artifact@v7
         with:
           name: ios-arm64
           path: prism-ios-arm64.zip
-
-  linux-x64:
-    needs: version
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y libspeechd-dev libglib2.0-dev
-      - name: Build Dynamic Release
-        run: |
-          cmake -B build-dynamic-release -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-dynamic-release
-      - name: Build Dynamic Debug
-        run: |
-          cmake -B build-dynamic-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-dynamic-debug
-      - name: Build Static Release
-        run: |
-          cmake -B build-static-release -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-static-release
-      - name: Build Static Debug
-        run: |
-          cmake -B build-static-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-static-debug
-      - name: Package
-        run: |
-          for linkage in dynamic static; do
-            for config in release debug; do
-              mkdir -p "dist/${linkage}/${config}/lib"
-              src="build-${linkage}-${config}"
-              if [ "$linkage" = "dynamic" ]; then
-                cp "${src}/libprism.so" "dist/${linkage}/${config}/lib/"
-              else
-                cp "${src}/libprism.a" "dist/${linkage}/${config}/lib/"
-              fi
-            done
-          done
-          mkdir -p dist/include
-          cp include/prism.h dist/include/
-          cp -r LICENSES "dist"
-          cp NOTICE "dist"
-          cd dist && zip -r ../prism-linux-x64.zip .
-      - uses: actions/upload-artifact@v7
-        with:
-          name: linux-x64
-          path: prism-linux-x64.zip
-
-  linux-arm64:
-    needs: version
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y libspeechd-dev libglib2.0-dev
-      - name: Build Dynamic Release
-        run: |
-          cmake -B build-dynamic-release -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-dynamic-release
-      - name: Build Dynamic Debug
-        run: |
-          cmake -B build-dynamic-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=ON -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-dynamic-debug
-      - name: Build Static Release
-        run: |
-          cmake -B build-static-release -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-static-release
-      - name: Build Static Debug
-        run: |
-          cmake -B build-static-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
-          cmake --build build-static-debug
-      - name: Package
-        run: |
-          for linkage in dynamic static; do
-            for config in release debug; do
-              mkdir -p "dist/${linkage}/${config}/lib"
-              src="build-${linkage}-${config}"
-              if [ "$linkage" = "dynamic" ]; then
-                cp "${src}/libprism.so" "dist/${linkage}/${config}/lib/"
-              else
-                cp "${src}/libprism.a" "dist/${linkage}/${config}/lib/"
-              fi
-            done
-          done
-          mkdir -p dist/include
-          cp include/prism.h dist/include/
-          cp -r LICENSES "dist"
-          cp NOTICE "dist"
-          cd dist && zip -r ../prism-linux-arm64.zip .
-      - uses: actions/upload-artifact@v7
-        with:
-          name: linux-arm64
-          path: prism-linux-arm64.zip
 
   android:
     needs: version
@@ -350,13 +270,12 @@ jobs:
         run: chmod +x gradlew && ./gradlew assembleRelease assembleDebug
       - name: Package
         run: |
-          mkdir -p dist/{debug,release}
-          mkdir -p dist/include
+          mkdir -p dist/{debug,release,include}
           cp build/android/gradle/outputs/aar/*-release.aar dist/release/
           cp build/android/gradle/outputs/aar/*-debug.aar dist/debug/
           cp include/prism.h dist/include/
-          cp -r LICENSES "dist"
-          cp NOTICE "dist"
+          cp -r LICENSES dist
+          cp NOTICE dist
           cd dist && zip -r ../prism-android.zip .
       - uses: actions/upload-artifact@v7
         with:
@@ -364,34 +283,35 @@ jobs:
           path: prism-android.zip
 
   emscripten:
-      needs: version
-      runs-on: ubuntu-latest
-      steps:
-        - uses: actions/checkout@v6
-        - uses: mymindstorm/setup-emsdk@v14
-          with:
-            version: latest
-        - name: Build Release
-          run: |
-            emcmake cmake -B build-release -DCMAKE_BUILD_TYPE=Release -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
-            cmake --build build-release
-        - name: Build Debug
-          run: |
-            emcmake cmake -B build-debug -DCMAKE_BUILD_TYPE=Debug -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_GDEXTENSION=OFF
-            cmake --build build-debug
-        - name: Package
-          run: |
-            mkdir -p dist/static/release dist/static/debug dist/include
-            cp build-release/libprism.a dist/static/release/
-            cp build-debug/libprism.a dist/static/debug/
-            cp include/prism.h dist/include/
-            cp -r LICENSES "dist"
-            cp NOTICE "dist"
-            cd dist && zip -r ../prism-wasm.zip .
-        - uses: actions/upload-artifact@v7
-          with:
-            name: wasm
-            path: prism-wasm.zip
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+      - name: Build all configurations
+        run: |
+          for bt in Release Debug; do
+            config=$(echo "$bt" | tr '[:upper:]' '[:lower:]')
+            emcmake cmake -B "build-${config}" ${{ env.CMAKE_COMMON }} \
+              -DCMAKE_BUILD_TYPE="$bt" \
+              -DPRISM_ENABLE_GDEXTENSION=OFF
+            cmake --build "build-${config}"
+          done
+      - name: Package
+        run: |
+          mkdir -p dist/static/{release,debug} dist/include
+          cp build-release/libprism.a dist/static/release/
+          cp build-debug/libprism.a dist/static/debug/
+          cp include/prism.h dist/include/
+          cp -r LICENSES dist
+          cp NOTICE dist
+          cd dist && zip -r ../prism-wasm.zip .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wasm
+          path: prism-wasm.zip
 
   gdextension:
     needs: version
@@ -400,157 +320,188 @@ jobs:
       matrix:
         target-type: [template_debug, template_release]
         target:
-          - { platform: linux, arch: x86_64, os: ubuntu-latest }
-          - { platform: linux, arch: x86_32, os: ubuntu-latest }
-          - { platform: linux, arch: arm64, os: ubuntu-24.04-arm }
-          - { platform: linux, arch: arm32, os: ubuntu-24.04-arm }
+          - { platform: linux,   arch: x86_64, os: ubuntu-latest }
+          - { platform: linux,   arch: x86_32, os: ubuntu-latest }
+          - { platform: linux,   arch: arm64,  os: ubuntu-24.04-arm }
+          - { platform: linux,   arch: arm32,  os: ubuntu-24.04-arm }
           - { platform: windows, arch: x86_64, os: windows-latest }
           - { platform: windows, arch: x86_32, os: windows-latest }
-          - { platform: windows, arch: arm64, os: windows-latest }
-          - { platform: macos, arch: arm64, os: macos-latest }
-          - { platform: macos, arch: x86_64, os: macos-latest }
+          - { platform: windows, arch: arm64,  os: windows-latest }
+          - { platform: macos,   arch: arm64,  os: macos-latest }
+          - { platform: macos,   arch: x86_64, os: macos-latest }
           - { platform: android, arch: x86_64, os: ubuntu-latest }
           - { platform: android, arch: x86_32, os: ubuntu-latest }
-          - { platform: android, arch: arm64, os: ubuntu-latest }
-          - { platform: android, arch: arm32, os: ubuntu-latest }
-          - { platform: ios, arch: arm64, os: macos-latest }
-          - { platform: web, arch: wasm32, os: ubuntu-latest }
+          - { platform: android, arch: arm64,  os: ubuntu-latest }
+          - { platform: android, arch: arm32,  os: ubuntu-latest }
+          - { platform: ios,     arch: arm64,  os: macos-latest }
+          - { platform: web,     arch: wasm32, os: ubuntu-latest }
     runs-on: ${{ matrix.target.os }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           submodules: true
-      - name: install-multilib-linux-x86-32
+      - name: install multilib (x86_32)
         if: matrix.target.platform == 'linux' && matrix.target.arch == 'x86_32'
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-multilib g++-multilib
-      - name: install-linux-armhf-toolchain
+      - name: install armhf cross-compiler
         if: matrix.target.platform == 'linux' && matrix.target.arch == 'arm32'
         run: |
           sudo dpkg --add-architecture armhf
           sudo apt-get update
           sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
-      - name: linux-deps-setup
+      - name: install native deps
         if: matrix.target.platform == 'linux' && (matrix.target.arch == 'x86_64' || matrix.target.arch == 'arm64')
         run: |
           sudo apt-get update
           sudo apt-get install -y libspeechd-dev libglib2.0-dev
-      - name: windows-msvc-setup-x86_64
-        if: matrix.target.platform == 'windows' && matrix.target.arch == 'x86_64'
+      - name: MSVC setup
+        if: matrix.target.platform == 'windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: amd64
-      - name: windows-msvc-setup-x86_32
-        if: matrix.target.platform == 'windows' && matrix.target.arch == 'x86_32'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x86
-      - name: windows-msvc-setup-arm64
-        if: matrix.target.platform == 'windows' && matrix.target.arch == 'arm64'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: amd64_arm64
-      - name: Android-ndk-setup
+          arch: >-
+            ${{
+              matrix.target.arch == 'x86_64' && 'amd64'       ||
+              matrix.target.arch == 'x86_32' && 'x86'         ||
+              matrix.target.arch == 'arm64'  && 'amd64_arm64'
+            }}
+      - name: NDK setup
         if: matrix.target.platform == 'android'
         uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
           ndk-version: r29
-      - name: iOS-download-toolchain
+      - name: download ios toolchain
         if: matrix.target.platform == 'ios'
-        run: |
-          curl -sSL https://raw.githubusercontent.com/leetal/ios-cmake/master/ios.toolchain.cmake -o ios.toolchain.cmake
-      - name: Web-setup-Emscripten
+        run: curl -sSL https://raw.githubusercontent.com/leetal/ios-cmake/master/ios.toolchain.cmake -o ios.toolchain.cmake
+      - name: Emscripten setup
         if: matrix.target.platform == 'web'
         uses: mymindstorm/setup-emsdk@v14
         with:
           version: latest
-      - name: Set-build-type
-        id: bt
-        shell: bash
-        run: |
-          if [ "${{ matrix.target-type }}" = "template_release" ]; then
-            echo "cmake_type=Release" >> "$GITHUB_OUTPUT"
-          else
-            echo "cmake_type=Debug" >> "$GITHUB_OUTPUT"
-          fi
-      - name: configure-linux-arm64
-        if: matrix.target.platform == 'linux' && (matrix.target.arch == 'x86_64' || matrix.target.arch == 'arm64')
-        run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON
-      - name: configure-linux-x86_32
-        if: matrix.target.platform == 'linux' && matrix.target.arch == 'x86_32'
-        run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON -DCMAKE_C_FLAGS="-m32" -DCMAKE_CXX_FLAGS="-m32"
-      - name: configure-linux-arm32
-        if: matrix.target.platform == 'linux' && matrix.target.arch == 'arm32'
-        run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=armv7l
-      - name: configure-windows-x86_64
-        if: matrix.target.platform == 'windows' && matrix.target.arch == 'x86_64'
-        run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON
-      - name: configure-Windows-x86_32
-        if: matrix.target.platform == 'windows' && matrix.target.arch == 'x86_32'
-        run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON
-      - name: configure- Windows-arm64
-        if: matrix.target.platform == 'windows' && matrix.target.arch == 'arm64'
-        run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON -DCMAKE_SYSTEM_PROCESSOR=ARM64
-      - name: configure-macos-arm64
-        if: matrix.target.platform == 'macos' && matrix.target.arch == 'arm64'
-        run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
-      - name: configure-macos-x86_64
-        if: matrix.target.platform == 'macos' && matrix.target.arch == 'x86_64'
-        run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_Swift_COMPILER_TARGET=x86_64-apple-macosx15.0
-      - name: configure-android
-        if: matrix.target.platform == 'android'
+      - name: Configure
         shell: bash
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          declare -A abi_map=( [arm64]=arm64-v8a [arm32]=armeabi-v7a [x86_64]=x86_64 [x86_32]=x86 )
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" -DANDROID_ABI="${abi_map[${{ matrix.target.arch }}]}" -DANDROID_PLATFORM=android-21
-      - name: configure-ios
-        if: matrix.target.platform == 'ios'
-        run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DBUILD_SHARED_LIBS=OFF -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=16.0 -DCMAKE_Swift_FLAGS="-target arm64-apple-ios16.0"
-      - name: configure-web
-        if: matrix.target.platform == 'web'
-        run: |
-          emcmake cmake -B build -DCMAKE_BUILD_TYPE=${{ steps.bt.outputs.cmake_type }} -DPRISM_ENABLE_TESTS=OFF -DPRISM_ENABLE_DEMOS=OFF -DPRISM_ENABLE_GDEXTENSION=ON
+          if [ "${{ matrix.target-type }}" = "template_release" ]; then
+            cmake_bt="Release"
+          else
+            cmake_bt="Debug"
+          fi
+          args=(
+            -B build ${{ env.CMAKE_COMMON }}
+            -DCMAKE_BUILD_TYPE="$cmake_bt"
+            -DBUILD_SHARED_LIBS=OFF
+            -DPRISM_ENABLE_GDEXTENSION=ON
+            -DGODOTCPP_TARGET="${{ matrix.target-type }}"
+          )
+          use_emcmake=false
+          case "${{ matrix.target.platform }}-${{ matrix.target.arch }}" in
+            linux-x86_64|linux-arm64)
+              ;;
+            linux-x86_32)
+              args+=( -DCMAKE_C_FLAGS="-m32" -DCMAKE_CXX_FLAGS="-m32"
+                      -DCMAKE_SYSTEM_NAME=Linux
+                      -DCMAKE_SYSTEM_PROCESSOR=x86_32 )
+              ;;
+            linux-arm32)
+              args+=( -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc
+                      -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++
+                      -DCMAKE_SYSTEM_NAME=Linux
+                      -DCMAKE_SYSTEM_PROCESSOR=arm32 )
+              ;;
+            windows-x86_64)
+              ;;
+            windows-x86_32)
+              args+=( -DCMAKE_SYSTEM_NAME=Windows
+                      -DCMAKE_SYSTEM_PROCESSOR=x86_32 )
+              ;;
+            windows-arm64)
+              args+=( -DCMAKE_SYSTEM_NAME=Windows
+                      -DCMAKE_SYSTEM_PROCESSOR=arm64 )
+              ;;
+            macos-arm64)
+              args+=( -DCMAKE_OSX_ARCHITECTURES=arm64
+                      -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 )
+              ;;
+            macos-x86_64)
+              args+=( -DCMAKE_OSX_ARCHITECTURES=x86_64
+                      -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
+                      -DCMAKE_Swift_COMPILER_TARGET=x86_64-apple-macosx15.0 )
+              ;;
+            android-*)
+              declare -A abi_map=( [arm64]=arm64-v8a [arm32]=armeabi-v7a
+                                   [x86_64]=x86_64  [x86_32]=x86 )
+              args+=( "-DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake"
+                      "-DANDROID_ABI=${abi_map[${{ matrix.target.arch }}]}"
+                      -DANDROID_PLATFORM=android-21 )
+              ;;
+            ios-arm64)
+              args+=( -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake
+                      -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=16.0
+                      "-DCMAKE_Swift_FLAGS=-target arm64-apple-ios16.0" )
+              ;;
+            web-wasm32)
+              use_emcmake=true
+              ;;
+          esac
+          if [ "$use_emcmake" = "true" ]; then
+            emcmake cmake "${args[@]}"
+          else
+            cmake "${args[@]}"
+          fi
       - name: Build
         run: cmake --build build --target prismatoid
-      - name: Delete Windows build artifacts
+      - name: Verify and fix binary name
+        shell: bash
+        run: |
+          platform="${{ matrix.target.platform }}"
+          arch="${{ matrix.target.arch }}"
+          target="${{ matrix.target-type }}"
+          outdir="gdextension/project/bin/${platform}"
+          case "$platform" in
+            windows)    ext="dll" ;;
+            macos|ios)  ext="dylib" ;;
+            *)          ext="so" ;;
+          esac
+          expected="prismatoid.${platform}.${target}.${arch}.${ext}"
+          actual=$(find "$outdir" -type f 2>/dev/null | head -1)
+          if [ -z "$actual" ]; then
+            echo "::error::No binary found in ${outdir}"
+            exit 1
+          fi
+          actual_name=$(basename "$actual")
+          if [ "$actual_name" = "$expected" ]; then
+            echo "Binary name correct: ${actual_name}"
+          else
+            echo "::warning::Renaming ${actual_name} -> ${expected}"
+            mv "$actual" "${outdir}/${expected}"
+          fi
+      - name: Remove Windows ancillary files
         if: matrix.target.platform == 'windows'
         shell: pwsh
         run: |
-          Remove-Item gdextension/bin/* -Include *.exp,*.lib,*.pdb -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item gdextension/project/bin/* -Include *.exp,*.lib,*.pdb `
+            -Recurse -Force -ErrorAction SilentlyContinue
       - name: Upload
         uses: actions/upload-artifact@v7
         with:
           name: gdextension-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ matrix.target-type }}
-          path: |
-            gdextension/project/bin/**
-
-  gdextension-merge:
-    runs-on: ubuntu-latest
-    needs: gdextension
-    steps:
-      - name: Merge GDExtension artifacts
-        uses: actions/upload-artifact/merge@v4
-        with:
-          name: gdextension-all
-          pattern: gdextension-*
-          delete-merged: true
+          path: gdextension/project/bin/**
 
   release:
-    needs: [version, docs, windows-x64, windows-arm64, macos, ios, linux-x64, linux-arm64, android, emscripten, gdextension-merge]
+    needs:
+      - version
+      - docs
+      - windows
+      - macos
+      - ios
+      - linux
+      - android
+      - emscripten
+      - gdextension
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -564,14 +515,14 @@ jobs:
           mkdir -p "${sdk}"/{windows/x64,windows/arm64,macos/universal,ios/arm64,linux/x64,linux/arm64,android,wasm,include,doc,LICENSES}
           cp include/prism.h "${sdk}/include/"
           cp -r artifacts/docs/* "${sdk}/doc/"
-          unzip -q artifacts/windows-x64/prism-windows-x64.zip -d "${sdk}/windows/x64/"
+          unzip -q artifacts/windows-x64/prism-windows-x64.zip     -d "${sdk}/windows/x64/"
           unzip -q artifacts/windows-arm64/prism-windows-arm64.zip -d "${sdk}/windows/arm64/"
           unzip -q artifacts/macos-universal/prism-macos-universal.zip -d "${sdk}/macos/universal/"
-          unzip -q artifacts/ios-arm64/prism-ios-arm64.zip -d "${sdk}/ios/arm64/"
-          unzip -q artifacts/linux-x64/prism-linux-x64.zip -d "${sdk}/linux/x64/"
-          unzip -q artifacts/linux-arm64/prism-linux-arm64.zip -d "${sdk}/linux/arm64/"
-          unzip -q artifacts/android/prism-android.zip -d "${sdk}/android/"
-          unzip -q artifacts/wasm/prism-wasm.zip -d "${sdk}/wasm/"
+          unzip -q artifacts/ios-arm64/prism-ios-arm64.zip         -d "${sdk}/ios/arm64/"
+          unzip -q artifacts/linux-x64/prism-linux-x64.zip         -d "${sdk}/linux/x64/"
+          unzip -q artifacts/linux-arm64/prism-linux-arm64.zip     -d "${sdk}/linux/arm64/"
+          unzip -q artifacts/android/prism-android.zip             -d "${sdk}/android/"
+          unzip -q artifacts/wasm/prism-wasm.zip                   -d "${sdk}/wasm/"
           find "${sdk}" -depth -type d -name include -not -path "${sdk}/include" -exec rm -rf {} +
           find "${sdk}" -depth -type d -name LICENSES -not -path "${sdk}/LICENSES" -exec rm -rf {} +
           find "${sdk}" -name "NOTICE" -type f -delete
@@ -582,9 +533,55 @@ jobs:
         run: |
           tag="${{ needs.version.outputs.tag }}"
           mkdir -p prismatoid/bin
-          cp -r artifacts/gdextension-all/* prismatoid/bin/
+          for dir in artifacts/gdextension-*/; do
+            cp -r "${dir}"* prismatoid/bin/
+          done
+          cat > prismatoid/prismatoid.gdextension << 'GDEXT'
+          [configuration]
+          entry_symbol = "prism_library_init"
+          compatibility_minimum = "4.5"
+
+          [libraries]
+          linux.debug.x86_64 = "res://addons/prismatoid/bin/linux/prismatoid.linux.template_debug.x86_64.so"
+          linux.release.x86_64 = "res://addons/prismatoid/bin/linux/prismatoid.linux.template_release.x86_64.so"
+          linux.debug.x86_32 = "res://addons/prismatoid/bin/linux/prismatoid.linux.template_debug.x86_32.so"
+          linux.release.x86_32 = "res://addons/prismatoid/bin/linux/prismatoid.linux.template_release.x86_32.so"
+          linux.debug.arm64 = "res://addons/prismatoid/bin/linux/prismatoid.linux.template_debug.arm64.so"
+          linux.release.arm64 = "res://addons/prismatoid/bin/linux/prismatoid.linux.template_release.arm64.so"
+          linux.debug.arm32 = "res://addons/prismatoid/bin/linux/prismatoid.linux.template_debug.arm32.so"
+          linux.release.arm32 = "res://addons/prismatoid/bin/linux/prismatoid.linux.template_release.arm32.so"
+          windows.debug.x86_64 = "res://addons/prismatoid/bin/windows/prismatoid.windows.template_debug.x86_64.dll"
+          windows.release.x86_64 = "res://addons/prismatoid/bin/windows/prismatoid.windows.template_release.x86_64.dll"
+          windows.debug.x86_32 = "res://addons/prismatoid/bin/windows/prismatoid.windows.template_debug.x86_32.dll"
+          windows.release.x86_32 = "res://addons/prismatoid/bin/windows/prismatoid.windows.template_release.x86_32.dll"
+          windows.debug.arm64 = "res://addons/prismatoid/bin/windows/prismatoid.windows.template_debug.arm64.dll"
+          windows.release.arm64 = "res://addons/prismatoid/bin/windows/prismatoid.windows.template_release.arm64.dll"
+          macos.debug.arm64 = "res://addons/prismatoid/bin/macos/prismatoid.macos.template_debug.arm64.dylib"
+          macos.release.arm64 = "res://addons/prismatoid/bin/macos/prismatoid.macos.template_release.arm64.dylib"
+          macos.debug.x86_64 = "res://addons/prismatoid/bin/macos/prismatoid.macos.template_debug.x86_64.dylib"
+          macos.release.x86_64 = "res://addons/prismatoid/bin/macos/prismatoid.macos.template_release.x86_64.dylib"
+          android.debug.arm64 = "res://addons/prismatoid/bin/android/prismatoid.android.template_debug.arm64.so"
+          android.release.arm64 = "res://addons/prismatoid/bin/android/prismatoid.android.template_release.arm64.so"
+          android.debug.arm32 = "res://addons/prismatoid/bin/android/prismatoid.android.template_debug.arm32.so"
+          android.release.arm32 = "res://addons/prismatoid/bin/android/prismatoid.android.template_release.arm32.so"
+          android.debug.x86_64 = "res://addons/prismatoid/bin/android/prismatoid.android.template_debug.x86_64.so"
+          android.release.x86_64 = "res://addons/prismatoid/bin/android/prismatoid.android.template_release.x86_64.so"
+          android.debug.x86_32 = "res://addons/prismatoid/bin/android/prismatoid.android.template_debug.x86_32.so"
+          android.release.x86_32 = "res://addons/prismatoid/bin/android/prismatoid.android.template_release.x86_32.so"
+          ios.debug.arm64 = "res://addons/prismatoid/bin/ios/prismatoid.ios.template_debug.arm64.dylib"
+          ios.release.arm64 = "res://addons/prismatoid/bin/ios/prismatoid.ios.template_release.arm64.dylib"
+          web.debug.wasm32 = "res://addons/prismatoid/bin/web/prismatoid.web.template_debug.wasm32.so"
+          web.release.wasm32 = "res://addons/prismatoid/bin/web/prismatoid.web.template_release.wasm32.so"
+          GDEXT
+          sed -i 's/^          //' prismatoid/prismatoid.gdextension
           cp -r LICENSES prismatoid/
           cp NOTICE prismatoid/
+          debug_count=$(find prismatoid/bin -name '*template_debug*' -type f | wc -l)
+          release_count=$(find prismatoid/bin -name '*template_release*' -type f | wc -l)
+          if [ "$release_count" -eq 0 ]; then
+            echo "::error::No template_release binaries: GODOTCPP_TARGET is not propagating"
+            exit 1
+          fi
           zip -r "prismatoid-gdextension-${tag}.zip" prismatoid
       - uses: actions/create-github-app-token@v1
         id: app-token
